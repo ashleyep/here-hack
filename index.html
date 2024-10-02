@@ -1,0 +1,128 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HERE Maps API Example</title>
+    <script src="https://js.api.here.com/v3/3.1/mapsjs-core.js"></script>
+    <script src="https://js.api.here.com/v3/3.1/mapsjs-service.js"></script>
+    <script src="https://js.api.here.com/v3/3.1/mapsjs-ui.js"></script>
+    <script src="https://js.api.here.com/v3/3.1/mapsjs-mapevents.js"></script>
+    <link rel="stylesheet" href="https://js.api.here.com/v3/3.1/mapsjs-ui.css">
+    <style>
+        body, html { margin: 0; padding: 0; height: 100%; }
+        #mapContainer { width: 100%; height: 100vh; }
+    </style>
+</head>
+<body>
+    <div id="mapContainer"></div>
+    <script>
+        // Initialize the platform object
+        var platform = new H.service.Platform({
+            apikey: 'eniGyjrFb5cB1JPwB_2XWycUDSuRk7Hdwb3pCUhQ3_s' // Replace with your API key
+        });
+
+        // Obtain the default map types from the platform object
+        var defaultLayers = platform.createDefaultLayers();
+
+        // Instantiate (and display) a map object
+        var map = new H.Map(
+            document.getElementById('mapContainer'),
+            defaultLayers.vector.normal.map,
+            {
+                center: { lng: 9.995790, lat: 53.557296 }, // Center of the map
+                zoom: 10,
+                pixelRatio: window.devicePixelRatio || 1
+            }
+        );
+
+        // Enable the map event system
+        var mapEvents = new H.mapevents.MapEvents(map);
+
+        // Instantiate the default behavior, providing the mapEvents object
+        var behavior = new H.mapevents.Behavior(mapEvents);
+
+        // Create the default UI components
+        var ui = H.ui.UI.createDefault(map, defaultLayers);
+
+        // Fetch and parse the CSV data
+        fetch('centroid_coordinates.csv')
+            .then(response => response.text())
+            .then(data => {
+                console.log('Raw CSV data:', data); // Log CSV data for inspection
+                const parsedData = parseCSV(data);
+                console.log('Parsed data:', parsedData); // Log parsed data for inspection
+                addCoordinatesToMap(parsedData);
+                setMapViewToDataBounds(parsedData);
+            })
+            .catch(error => console.error('Error fetching or parsing CSV:', error));
+
+        // Function to parse CSV data
+        function parseCSV(data) {
+            const rows = data.trim().split('\n').slice(1); // Trim and split rows, then skip header
+            return rows.map(row => {
+                const columns = row.split(',');
+                return {
+                    long: parseFloat(columns[0]), // Longitude is the first column
+                    lat: parseFloat(columns[1])   // Latitude is the second column
+                };
+            }).filter(coord => {
+                const valid = !isNaN(coord.lat) && !isNaN(coord.long);
+                if (!valid) console.warn('Skipping invalid coordinate:', coord);
+                return valid;
+            });
+        }
+
+        // Function to add coordinates to the map with larger points
+        function addCoordinatesToMap(coords) {
+            console.log('Adding coordinates to map');
+            coords.forEach(coord => {
+                const { lat, long } = coord;
+                const size = 50000; // Adjust size as needed (radius in meters)
+
+                const circle = new H.map.Circle(
+                    { lat: lat, lng: long },
+                    size,
+                    {
+                        style: {
+                            strokeColor: 'rgba(0, 0, 0, 0.6)',
+                            lineWidth: 1,
+                            fillColor: 'rgba(255, 0, 0, 0.5)' // Color for the filled circle
+                        }
+                    }
+                );
+
+                map.addObject(circle);
+            });
+        }
+
+        // Function to set map view to the bounds of the data
+        function setMapViewToDataBounds(coords) {
+            if (coords.length === 0) return;
+
+            const latitudes = coords.map(m => m.lat);
+            const longitudes = coords.map(m => m.long);
+
+            const minLat = Math.min(...latitudes);
+            const maxLat = Math.max(...latitudes);
+            const minLong = Math.min(...longitudes);
+            const maxLong = Math.max(...longitudes);
+
+            // Adjust the minLat to hide the South Pole
+            const boundingBox = new H.geo.Rect(Math.max(minLat, -60), minLong, maxLat, maxLong);
+            console.log('Setting map view to bounds:', boundingBox);
+            map.getViewModel().setLookAtData({
+                bounds: boundingBox
+            });
+
+            // Set maximum zoom level to prevent the map from zooming out too far
+            const maxZoomOut = 2.8; // Adjust this value as needed
+            map.addEventListener('mapviewchange', () => {
+                if (map.getZoom() < maxZoomOut) {
+                    map.setZoom(maxZoomOut);
+                }
+            });
+        }
+    </script>
+</body>
+</html>
